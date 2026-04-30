@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Cuisinier {
+  id         Int      @id @default(autoincrement())
+  prenom     String
+  nom        String
+  email      String   @unique
+  telephone  String?
+  specialite String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  menus Menu[]
+
+  @@map("cuisiniers")
+}
+
+model Eleve {
+  id              Int      @id @default(autoincrement())
+  prenom          String
+  nom             String
+  classe          String
+  regimeAlimentaire RegimeAlimentaire
+  telephoneParent String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  repas Repas[]
+
+  @@map("eleves")
+}
+
+model Menu {
+  id              Int       @id @default(autoincrement())
+  date            DateTime  @db.Date
+  intitule        String
+  type            TypeMenu
+  cuisinierId     Int
+  portionsPrevues Int
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  cuisinier Cuisinier @relation(fields: [cuisinierId], references: [id])
+  repas     Repas[]
+
+  @@unique([date, type])
+  @@map("menus")
+}
+
+model Repas {
+  id          Int          @id @default(autoincrement())
+  eleveId     Int
+  menuId      Int
+  dateService DateTime     @db.Date
+  statut      StatutRepas  @default(SERVI)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  eleve Eleve @relation(fields: [eleveId], references: [id])
+  menu  Menu  @relation(fields: [menuId], references: [id])
+
+  @@unique([eleveId, menuId])
+  @@map("repas")
+}
+
+enum RegimeAlimentaire {
+  NORMAL
+  VEGETARIEN
+  SANS_GLUTEN
+}
+
+enum TypeMenu {
+  DEJEUNER
+  GOUTER
+}
+
+enum StatutRepas {
+  SERVI
+  ABSENT
+}

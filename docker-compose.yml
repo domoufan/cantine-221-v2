@@ -1,0 +1,95 @@
+version: "3.9"
+
+services:
+  # ─── Base de données PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cantine221_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cantine}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cantine221pass}
+      POSTGRES_DB: ${POSTGRES_DB:-cantine221}
+    ports:
+      - "5433:5432"          # 5433 côté hôte pour ne pas conflicster avec une PG locale
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cantine} -d ${POSTGRES_DB:-cantine221}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cantine_net
+
+  # ─── Service de migration Prisma ────────────────────────────────────────────
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: cantine221_migrate
+    command: npx prisma migrate deploy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cantine}:${POSTGRES_PASSWORD:-cantine221pass}@postgres:5432/${POSTGRES_DB:-cantine221}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cantine_net
+    restart: "no"
+
+  # ─── API Node.js/Express ────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: cantine221_api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cantine}:${POSTGRES_PASSWORD:-cantine221pass}@postgres:5432/${POSTGRES_DB:-cantine221}
+      PORT: ${PORT:-3000}
+      NODE_ENV: ${NODE_ENV:-production}
+    ports:
+      - "${PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - cantine_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ─── Prisma Studio (optionnel, profil dev) ──────────────────────────────────
+  prisma-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: cantine221_studio
+    command: npx prisma studio --port 5555 --browser none
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cantine}:${POSTGRES_PASSWORD:-cantine221pass}@postgres:5432/${POSTGRES_DB:-cantine221}
+    ports:
+      - "5555:5555"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cantine_net
+    profiles:
+      - dev                  # Démarré uniquement avec: docker compose --profile dev up
+
+volumes:
+  postgres_data:
+    name: cantine221_pgdata
+
+networks:
+  cantine_net:
+    name: cantine221_network
+    driver: bridge
